@@ -1,151 +1,96 @@
 <?php
-class Author {	
-   
-	private $authorTable = 'author';	
-	private $conn;
-	
-	public function __construct($db){
-        $this->conn = $db;
-    }
-	
-	public function listAuthor(){		
-		
-		$sqlQuery = "SELECT authorid, name, status
-			FROM ".$this->authorTable." ";			
-			
-		if(!empty($_POST["search"]["value"])){
-			$sqlQuery .= ' WHERE (authorid LIKE "%'.$_POST["search"]["value"].'%" ';
-			$sqlQuery .= ' OR name LIKE "%'.$_POST["search"]["value"].'%" ';
-			$sqlQuery .= ' OR status LIKE "%'.$_POST["search"]["value"].'%" ';						
-		}
-		
-		if(!empty($_POST["order"])){
-			$sqlQuery .= 'ORDER BY '.$_POST['order']['0']['column'].' '.$_POST['order']['0']['dir'].' ';
-		} else {
-			$sqlQuery .= 'ORDER BY authorid DESC ';
-		}
-		
-		if($_POST["length"] != -1){
-			$sqlQuery .= 'LIMIT ' . $_POST['start'] . ', ' . $_POST['length'];
-		}	
-		
-		$stmt = $this->conn->prepare($sqlQuery);
-		$stmt->execute();
-		$result = $stmt->get_result();	
-		
-		$stmtTotal = $this->conn->prepare($sqlQuery);
-		$stmtTotal->execute();
-		$allResult = $stmtTotal->get_result();
-		$allRecords = $allResult->num_rows;
-		
-		$displayRecords = $result->num_rows;
-		$records = array();	
-		$count = 1;
-		while ($author = $result->fetch_assoc()) { 				
-			$rows = array();			
-			$rows[] = $count;
-			$rows[] = ucfirst($author['name']);
-			$rows[] = $author['status'];							
-			$rows[] = '<button type="button" name="update" id="'.$author["authorid"].'" class="btn btn-warning btn-xs update"><span class="glyphicon glyphicon-edit" title="Edit">Edit</span></button>';
-			$rows[] = '<button type="button" name="delete" id="'.$author["authorid"].'" class="btn btn-danger btn-xs delete" ><span class="glyphicon glyphicon-remove" title="Delete">Delete</span></button>';
-			$records[] = $rows;
-			$count++;
-		}
-		
-		$output = array(
-			"draw"	=>	intval($_POST["draw"]),			
-			"iTotalRecords"	=> 	$displayRecords,
-			"iTotalDisplayRecords"	=>  $allRecords,
-			"data"	=> 	$records
-		);
-		
-		echo json_encode($output);
-	}	
-	
-	public function insert(){
-		
-		if($this->name && $_SESSION["userid"]) {
+include_once 'config/Database.php';
+include_once 'class/User.php';
 
-			$stmt = $this->conn->prepare("
-				INSERT INTO ".$this->authorTable."(`name`, `status`)
-				VALUES(?, ?)");
-		
-			$this->name = htmlspecialchars(strip_tags($this->name));
-			$this->status = htmlspecialchars(strip_tags($this->status));
-			
-			$stmt->bind_param("ss", $this->name, $this->status);
-			
-			if($stmt->execute()){
-				return true;
-			}		
-		}
-	}
-	
-	public function update(){
-		
-		if($this->name && $_SESSION["userid"]) {			
-	
-			$stmt = $this->conn->prepare("
-				UPDATE ".$this->authorTable." 
-				SET name = ?, status = ?
-				WHERE authorid = ?");
-	 
-			$this->name = htmlspecialchars(strip_tags($this->name));
-			$this->status = htmlspecialchars(strip_tags($this->status));
-			$this->authorid = htmlspecialchars(strip_tags($this->authorid));
-			
-			$stmt->bind_param("ssi", $this->name, $this->status, $this->authorid);
-			
-			if($stmt->execute()){				
-				return true;
-			}			
-		}	
-	}	
-	
-	public function delete(){
-		if($this->authorid && $_SESSION["userid"]) {			
+$database = new Database();
+$db = $database->getConnection();
 
-			$stmt = $this->conn->prepare("
-				DELETE FROM ".$this->authorTable." 
-				WHERE authorid = ?");
+$user = new User($db);
 
-			$this->authorid = htmlspecialchars(strip_tags($this->authorid));
-
-			$stmt->bind_param("i", $this->authorid);
-
-			if($stmt->execute()){				
-				return true;
-			}
-		}
-	}
-	
-	public function getAuthorDetails(){
-		if($this->authorid && $_SESSION["userid"]) {			
-					
-			$sqlQuery = "
-				SELECT authorid, name, status
-				FROM ".$this->authorTable."			
-				WHERE authorid = ? ";	
-					
-			$stmt = $this->conn->prepare($sqlQuery);
-			$stmt->bind_param("i", $this->authorid);	
-			$stmt->execute();
-			$result = $stmt->get_result();				
-			$records = array();		
-			while ($author = $result->fetch_assoc()) { 				
-				$rows = array();	
-				$rows['authorid'] = $author['authorid'];				
-				$rows['name'] = $author['name'];				
-				$rows['status'] = $author['status'];				
-				$records[] = $rows;
-			}		
-			$output = array(			
-				"data"	=> 	$records
-			);
-			echo json_encode($output);
-		}
-	}	
-	
-	
+if(!$user->loggedIn()) {
+	header("Location: index.php");
 }
+include('inc/header4.php');
 ?>
+<title>phpzag.com : Demo Library Management System with PHP & MySQL</title>
+<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" />
+<link href="//maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="css/dashboard.css" />
+<script src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap4.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.12.1/css/dataTables.bootstrap4.min.css" />
+<script src="js/author.js"></script>
+</head>
+<body>
+	
+	<div class="container-fluid">
+	<?php include('top_menus.php'); ?>
+		<div class="row row-offcanvas row-offcanvas-left">
+			<?php include('left_menus.php'); ?>
+			<div class="col-md-9 col-lg-10 main"> 
+			<h2>Author</h2> 
+			<div class="panel-heading">
+				<div class="row">
+					<div class="col-md-10">
+						<h3 class="panel-title"></h3>
+					</div>
+					<div class="col-md-2" align="right">
+						<button type="button" id="addAuthor" class="btn btn-info" title="Add user"><span class="glyphicon glyphicon-plus">Add</span></button>
+					</div>
+				</div>
+			</div>
+			<table id="authorListing" class="table table-striped table-bordered">
+				<thead>
+					<tr>						
+						<th>Sn.</th>					
+						<th>Name</th>					
+						<th>Status</th>											
+						<th></th>
+						<th></th>					
+					</tr>
+				</thead>
+			</table>				
+			</div>
+		</div>		
+		<div id="authorModal" class="modal fade">
+			<div class="modal-dialog">
+				<form method="post" id="authorForm">
+					<div class="modal-content">
+						<div class="modal-header">
+							<button type="button" class="close" data-dismiss="modal"></button>
+							<h4 class="modal-title"><i class="fa fa-plus"></i> Edit User</h4>
+						</div>
+						<div class="modal-body">						
+							
+							<div class="form-group">							
+								<label for="Income" class="control-label">Author</label>							
+								<input type="text" name="name" id="name" autocomplete="off" class="form-control" placeholder="author name"/>
+												
+							</div>
+							
+							<div class="form-group">
+								<label for="status" class="control-label">Status</label>							
+								<select class="form-control" id="status" name="status"/>
+									<option value="">Select</option>							
+									<option value="Enable">Enable</option>
+									<option value="Disable">Disable</option>								
+								</select>							
+							</div>				
+							
+											
+						</div>
+						<div class="modal-footer">
+							<input type="hidden" name="authorid" id="authorid" />					
+							<input type="hidden" name="action" id="action" value="" />
+							<input type="submit" name="save" id="save" class="btn btn-info" value="Save" />
+							<button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+						</div>
+					</div>
+				</form>
+			</div>
+		</div>	
+	</div>
+
+</body>
+</html>
+

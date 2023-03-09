@@ -1,210 +1,111 @@
 <?php
-class User {	
-   
-	private $userTable = 'user';	
-	private $conn;
-	
-	public function __construct($db){
-        $this->conn = $db;
-    }
-	
-	public function login(){
-		if($this->email && $this->password) {			
-			$sqlQuery = "
-				SELECT * FROM ".$this->userTable." 
-				WHERE email = ? AND password = ?";			
-			$stmt = $this->conn->prepare($sqlQuery);
-			$password = md5($this->password);
-			$stmt->bind_param("ss", $this->email, $password);	
-			$stmt->execute();
-			$result = $stmt->get_result();
-			if($result->num_rows > 0){
-				$user = $result->fetch_assoc();
-				$_SESSION["userid"] = $user['id'];
-				$_SESSION["role"] = $user['role'];
-				$_SESSION["name"] = $user['email'];					
-				return 1;		
-			} else {
-				return 0;		
-			}			
-		} else {
-			return 0;
-		}
-	}
-	
-	public function loggedIn (){
-		if(!empty($_SESSION["userid"])) {
-			return 1;
-		} else {
-			return 0;
-		}
-	}
-	
-	public function isAdmin (){
-		if(!empty($_SESSION["userid"]) && $_SESSION["role"] == 'admin') {
-			return 1;
-		} else {
-			return 0;
-		}
-	}
+include_once 'config/Database.php';
+include_once 'class/User.php';
 
-	public function listUsers(){		
-		
-		$sqlQuery = "SELECT id, first_name, last_name, email, password, role
-			FROM ".$this->userTable." ";			
-			
-		if(!empty($_POST["search"]["value"])){
-			$sqlQuery .= ' WHERE (id LIKE "%'.$_POST["search"]["value"].'%" ';
-			$sqlQuery .= ' OR first_name LIKE "%'.$_POST["search"]["value"].'%" ';
-			$sqlQuery .= ' OR email LIKE "%'.$_POST["search"]["value"].'%" ';
-			$sqlQuery .= ' OR password LIKE "%'.$_POST["search"]["value"].'%" ';
-			$sqlQuery .= ' OR role LIKE "%'.$_POST["search"]["value"].'%" ';			
-		}
-		
-		if(!empty($_POST["order"])){
-			$sqlQuery .= 'ORDER BY '.$_POST['order']['0']['column'].' '.$_POST['order']['0']['dir'].' ';
-		} else {
-			$sqlQuery .= 'ORDER BY id DESC ';
-		}
-		
-		if($_POST["length"] != -1){
-			$sqlQuery .= 'LIMIT ' . $_POST['start'] . ', ' . $_POST['length'];
-		}	
-		
-		$stmt = $this->conn->prepare($sqlQuery);
-		$stmt->execute();
-		$result = $stmt->get_result();	
-		
-		$stmtTotal = $this->conn->prepare($sqlQuery);
-		$stmtTotal->execute();
-		$allResult = $stmtTotal->get_result();
-		$allRecords = $allResult->num_rows;
-		
-		$displayRecords = $result->num_rows;
-		$records = array();	
-		$count = 1;
-		while ($user = $result->fetch_assoc()) { 				
-			$rows = array();			
-			$rows[] = $count;
-			$rows[] = ucfirst($user['first_name'])." ".ucfirst($user['last_name']);
-			$rows[] = $user['email'];	
-			$rows[] = $user['role'];			
-			$rows[] = '<button type="button" name="update" id="'.$user["id"].'" class="btn btn-warning btn-xs update"><span class="glyphicon glyphicon-edit" title="Edit">Edit</span></button>';
-			$rows[] = '<button type="button" name="delete" id="'.$user["id"].'" class="btn btn-danger btn-xs delete" ><span class="glyphicon glyphicon-remove" title="Delete">Delete</span></button>';
-			$records[] = $rows;
-			$count++;
-		}
-		
-		$output = array(
-			"draw"	=>	intval($_POST["draw"]),			
-			"iTotalRecords"	=> 	$displayRecords,
-			"iTotalDisplayRecords"	=>  $allRecords,
-			"data"	=> 	$records
-		);
-		
-		echo json_encode($output);
-	}	
-	
-	public function insert(){		
-		if($this->role && $this->email && $this->password && $_SESSION["userid"]) {
-			$stmt = $this->conn->prepare("
-				INSERT INTO ".$this->userTable."(`first_name`, `last_name`, `email`, `password`, `role`)
-				VALUES(?, ?, ?, ?, ?)");		
-			$this->role = htmlspecialchars(strip_tags($this->role));
-			$this->email = htmlspecialchars(strip_tags($this->email));
-			$this->first_name = htmlspecialchars(strip_tags($this->first_name));
-			$this->last_name = htmlspecialchars(strip_tags($this->last_name));
-			$this->password = md5($this->password);
-			$stmt->bind_param("sssss", $this->first_name, $this->last_name, $this->email, $this->password, $this->role);
-			
-			if($stmt->execute()){
-				return true;
-			}		
-		}
-	}
-	
-	public function update(){
-		
-		if($this->role && $this->email && $_SESSION["userid"]) {
-			
-			$updatePass = '';
-			if($this->password) {
-				$this->password = md5($this->password);
-				$updatePass = ", password = '".$this->password."'";
-			}
-			
-			$stmt = $this->conn->prepare("
-				UPDATE ".$this->userTable." 
-				SET first_name = ?, last_name = ?, email = ?, role = ? $updatePass
-				WHERE id = ?");
-	 
-			$this->role = htmlspecialchars(strip_tags($this->role));
-			$this->email = htmlspecialchars(strip_tags($this->email));
-			$this->first_name = htmlspecialchars(strip_tags($this->first_name));
-			$this->last_name = htmlspecialchars(strip_tags($this->last_name));
-								
-			$stmt->bind_param("ssssi", $this->first_name, $this->last_name, $this->email, $this->role, $this->id);
-			
-			if($stmt->execute()){				
-				return true;
-			}			
-		}	
-	}	
-	
-	public function delete(){
-		if($this->id && $_SESSION["userid"]) {			
+$database = new Database();
+$db = $database->getConnection();
 
-			$stmt = $this->conn->prepare("
-				DELETE FROM ".$this->userTable." 
-				WHERE id = ?");
+$user = new User($db);
 
-			$this->id = htmlspecialchars(strip_tags($this->id));
-
-			$stmt->bind_param("i", $this->id);
-
-			if($stmt->execute()){				
-				return true;
-			}
-		}
-	}
-	
-	public function getUserDetails(){
-		if($this->user_id && $_SESSION["userid"]) {			
-					
-			$sqlQuery = "
-				SELECT id, first_name, last_name, email, password, role
-				FROM ".$this->userTable."			
-				WHERE id = ? ";	
-					
-			$stmt = $this->conn->prepare($sqlQuery);
-			$stmt->bind_param("i", $this->user_id);	
-			$stmt->execute();
-			$result = $stmt->get_result();				
-			$records = array();		
-			while ($user = $result->fetch_assoc()) { 				
-				$rows = array();	
-				$rows['id'] = $user['id'];				
-				$rows['first_name'] = $user['first_name'];				
-				$rows['last_name'] = $user['last_name'];
-				$rows['email'] = $user['email'];
-				$rows['role'] = $user['role'];	
-				$records[] = $rows;
-			}		
-			$output = array(			
-				"data"	=> 	$records
-			);
-			echo json_encode($output);
-		}
-	}	
-	
-	function getUsersList(){		
-		$stmt = $this->conn->prepare("
-		SELECT id, first_name, last_name 
-		FROM ".$this->userTable." 
-		WHERE role = 'user'");				
-		$stmt->execute();			
-		$result = $stmt->get_result();		
-		return $result;	
-	}
+if(!$user->loggedIn()) {
+	header("Location: index.php");
 }
+include('inc/header4.php');
 ?>
+<title>phpzag.com : Demo Library Management System with PHP & MySQL</title>
+<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" />
+<link href="//maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="css/dashboard.css" />
+<script src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap4.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.12.1/css/dataTables.bootstrap4.min.css" />
+<script src="js/user.js"></script>
+</head>
+<body>
+	
+	<div class="container-fluid">
+	<?php include('top_menus.php'); ?>
+		<div class="row row-offcanvas row-offcanvas-left">
+			<?php include('left_menus.php'); ?>
+			<div class="col-md-9 col-lg-10 main"> 
+			<h2>Users</h2>
+			<div class="panel-heading">
+				<div class="row">
+					<div class="col-md-10">
+						<h3 class="panel-title"></h3>
+					</div>
+					<div class="col-md-2" align="right">
+						<button type="button" id="addUser" class="btn btn-info" title="Add user"><span class="glyphicon glyphicon-plus">Add</span></button>
+					</div>
+				</div>
+			</div>			
+			<table id="userListing" class="table table-striped table-bordered">
+				<thead>
+					<tr>						
+						<th>Sn.</th>					
+						<th>Name</th>					
+						<th>Email</th>
+						<th>Role</th>						
+						<th></th>
+						<th></th>					
+					</tr>
+				</thead>
+			</table>				
+			</div>
+		</div>		
+		<div id="userModal" class="modal fade">
+			<div class="modal-dialog">
+				<form method="post" id="userForm">
+					<div class="modal-content">
+						<div class="modal-header">
+							<button type="button" class="close" data-dismiss="modal">&times;</button>
+							<h4 class="modal-title"><i class="fa fa-plus"></i> Edit User</h4>
+						</div>
+						<div class="modal-body">						
+							
+							<div class="form-group">
+								<label for="country" class="control-label">Role</label>							
+								<select class="form-control" id="role" name="role"/>
+									<option value="">Select Role</option>							
+									<option value="admin">Admin</option>
+									<option value="user">User</option>								
+								</select>							
+							</div>
+							
+							<div class="form-group">							
+								<label for="Income" class="control-label">First Name</label>							
+								<input type="text" name="first_name" id="first_name" autocomplete="off" class="form-control" placeholder="first name"/>
+												
+							</div>
+							
+							<div class="form-group"
+								<label for="project" class="control-label">Last Name</label>
+								<input type="text" class="form-control" id="last_name" name="last_name" placeholder="Last name" >			
+							</div>	
+
+							<div class="form-group"
+								<label for="project" class="control-label">Email</label>
+								<input type="email" class="form-control" id="email" name="email" placeholder="Email" >			
+							</div>
+							
+							<div class="form-group"
+								<label for="project" class="control-label">New Password</label>
+								<input type="password" class="form-control" id="password" name="password" placeholder="password" >			
+							</div>
+											
+						</div>
+						<div class="modal-footer">
+							<input type="hidden" name="id" id="id" />						
+							<input type="hidden" name="action" id="action" value="" />
+							<input type="submit" name="save" id="save" class="btn btn-info" value="Save" />
+							<button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+						</div>
+					</div>
+				</form>
+			</div>
+		</div>	
+	</div>
+
+</body>
+</html>
+
